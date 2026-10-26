@@ -1,0 +1,16 @@
+services:
+  api:
+    build: ./backend
+    environment:
+      WINDBOOK_LIVE: "1"   # compute with pandas; set to 0 to serve the precomputed JSON
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 5s
+      retries: 10
+  web:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy

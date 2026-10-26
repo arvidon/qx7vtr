@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/format.ts","./src/main.tsx","./src/components/accuracy.tsx","./src/components/decisionday.tsx","./src/components/howitworks.tsx","./src/components/common.tsx","./vite.config.ts"],"version":"5.6.3"}
