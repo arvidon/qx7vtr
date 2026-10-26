@@ -1,7 +1,7 @@
 FROM python:3.13-slim
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-live.txt .
+RUN pip install --no-cache-dir -r requirements-live.txt
 COPY app ./app
 # Parquet snapshot and precomputed JSON are baked in; refresh with
 # `python -m app.pipeline && python -m app.precompute`.
