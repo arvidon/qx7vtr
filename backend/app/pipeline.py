@@ -7,8 +7,13 @@ from datetime import timedelta
 import httpx
 
 from .config import (
-    ACTUALS_FILE, DATA_DIR, DATA_END, DATA_START, FORECAST_PUBLISH_FROM,
-    FORECAST_PUBLISH_TO, FORECASTS_FILE,
+    ACTUALS_FILE,
+    DATA_DIR,
+    DATA_END,
+    DATA_START,
+    FORECAST_PUBLISH_FROM,
+    FORECAST_PUBLISH_TO,
+    FORECASTS_FILE,
 )
 from .elexon import fetch_actuals, fetch_forecasts
 

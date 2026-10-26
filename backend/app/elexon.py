@@ -1,5 +1,5 @@
 """Thin client for the two Elexon BMRS stream endpoints we use."""
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pandas as pd
@@ -10,7 +10,7 @@ CHUNK = timedelta(days=7)
 
 
 def _iso(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _stream(client: httpx.Client, dataset: str, start: datetime, end: datetime, **params) -> list[dict]:

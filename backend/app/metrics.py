@@ -58,11 +58,8 @@ def histogram(sel: pd.DataFrame, col: str = "error_mw", bin_mw: int = 500) -> li
     lo = int(np.floor(e.min() / bin_mw) * bin_mw)
     hi = int(np.ceil(e.max() / bin_mw) * bin_mw) + bin_mw
     counts, edges = np.histogram(e, bins=np.arange(lo, hi, bin_mw))
-    return [{"from_mw": int(a), "to_mw": int(b), "count": int(c)} for a, b, c in zip(edges[:-1], edges[1:], counts)]
-
-
-def bias_by_horizon(per_horizon: dict[int, pd.DataFrame]) -> list[dict]:
     return [
-        {"horizon_h": h, "bias_mw": float(s["error_mw"].mean()), "mae_mw": float(s["error_mw"].abs().mean()), "n": len(s)}
-        for h, s in per_horizon.items()
+        {"from_mw": int(a), "to_mw": int(b), "count": int(c)}
+        for a, b, c in zip(edges[:-1], edges[1:], counts, strict=True)
     ]
+

@@ -1,6 +1,6 @@
 """FastAPI app. Serves precomputed JSON by default; set WINDBOOK_LIVE=1 to compute with pandas."""
 import os
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from functools import lru_cache
 
 from fastapi import FastAPI, HTTPException, Query
@@ -26,9 +26,9 @@ def _call(fn, *args):
     try:
         return fn(*args)
     except ModeError as e:
-        raise HTTPException(422, str(e))
+        raise HTTPException(422, str(e)) from e
     except NotFound as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, str(e)) from e
 
 
 @app.get("/api/health")
@@ -61,5 +61,5 @@ def horizon_curve():
 @app.get("/api/vintages")
 def vintages(target: datetime):
     """Every forecast published for one target hour, oldest first."""
-    t = target if target.tzinfo else target.replace(tzinfo=timezone.utc)
-    return _call(store().vintages, t.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    t = target if target.tzinfo else target.replace(tzinfo=UTC)
+    return _call(store().vintages, t.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))

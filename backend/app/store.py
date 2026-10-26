@@ -5,7 +5,7 @@ LiveStore computes on request from Parquet (local and Docker; WINDBOOK_LIVE=1).
 """
 import json
 from datetime import time
-from functools import lru_cache
+from functools import cache, lru_cache
 
 from .config import PRECOMPUTED_DIR
 from .modes import mode_key
@@ -16,7 +16,7 @@ class NotFound(LookupError):
 
 
 class StaticStore:
-    @lru_cache(maxsize=None)
+    @cache
     def _file(self, name: str):
         path = PRECOMPUTED_DIR / f"{name}.json"
         if not path.exists():

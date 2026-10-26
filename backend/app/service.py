@@ -3,14 +3,19 @@
 The deployed API serves these same payloads from precomputed JSON, so this
 module is the single source of truth for what the frontend sees.
 """
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 import numpy as np
 import pandas as pd
 
 from . import metrics
 from .config import (
-    ACTUAL_PUBLISH_LAG, BIAS_WINDOW, FIRST_DELIVERY_DAY, HORIZON_GRID, LAST_DELIVERY_DAY, UK_TZ,
+    ACTUAL_PUBLISH_LAG,
+    BIAS_WINDOW,
+    FIRST_DELIVERY_DAY,
+    HORIZON_GRID,
+    LAST_DELIVERY_DAY,
+    UK_TZ,
 )
 from .selection import add_bias_correction, select_forecasts, utc64
 
@@ -32,7 +37,7 @@ def add_trailing_band(sel: pd.DataFrame, window: timedelta = BIAS_WINDOW) -> pd.
     out = sel.copy()
     starts, errs = utc64(out["start_time"]), out["error_mw"].to_numpy()
     lows, highs = [], []
-    for d, f in zip(utc64(out["decision_time"]), out["forecast_mw"].to_numpy()):
+    for d, f in zip(utc64(out["decision_time"]), out["forecast_mw"].to_numpy(), strict=True):
         lo = np.searchsorted(starts, d - np.timedelta64(window), "left")
         hi = np.searchsorted(starts, d - np.timedelta64(ACTUAL_PUBLISH_LAG), "right")
         if hi > lo:
@@ -81,7 +86,8 @@ def day_payloads(sel: pd.DataFrame, actuals: pd.DataFrame) -> dict[str, dict]:
                 for r in rows.itertuples()
             ],
             "actual_halfhourly": [
-                {"start_time": t.strftime(ISO), "actual_mw": _round(g)} for t, g in zip(hh.start_time, hh.generation_mw)
+                {"start_time": t.strftime(ISO), "actual_mw": _round(g)}
+                for t, g in zip(hh.start_time, hh.generation_mw, strict=True)
             ],
             "summary": metrics.summary(rows),
             "summary_corrected": metrics.summary(rows, "error_corrected_mw"),
@@ -129,15 +135,19 @@ def horizon_curve(actuals, forecasts, horizons=HORIZON_GRID) -> list[dict]:
 
 def vintages(actuals: pd.DataFrame, forecasts: pd.DataFrame) -> dict[str, dict]:
     f = in_window(forecasts).sort_values(["start_time", "publish_time"])
-    act = dict(zip(actuals["start_time"], actuals["generation_mw"]))
+    act = dict(zip(actuals["start_time"], actuals["generation_mw"], strict=True))
     out = {}
     for t, g in f.groupby("start_time"):
         out[t.strftime(ISO)] = {
             "target": t.strftime(ISO),
             "actual_mw": _round(act.get(t)),
             "vintages": [
-                {"publish_time": p.strftime(ISO), "horizon_h": _round((t - p).total_seconds() / 3600), "forecast_mw": _round(v)}
-                for p, v in zip(g["publish_time"], g["generation_mw"])
+                {
+                    "publish_time": p.strftime(ISO),
+                    "horizon_h": _round((t - p).total_seconds() / 3600),
+                    "forecast_mw": _round(v),
+                }
+                for p, v in zip(g["publish_time"], g["generation_mw"], strict=True)
             ],
         }
     return out
@@ -163,8 +173,7 @@ def meta(actuals: pd.DataFrame, forecasts: pd.DataFrame) -> dict:
 
 def snapshot_time() -> datetime:
     """When the pipeline last wrote the Parquet snapshot."""
-    from datetime import timezone
 
     from .config import FORECASTS_FILE
 
-    return datetime.fromtimestamp(FORECASTS_FILE.stat().st_mtime, tz=timezone.utc)
+    return datetime.fromtimestamp(FORECASTS_FILE.stat().st_mtime, tz=UTC)

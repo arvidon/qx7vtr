@@ -1,0 +1,8 @@
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+# B008: FastAPI's Query() defaults are the documented idiom.
+# B019: cached methods live on one process-wide store instance, so nothing leaks.
+ignore = ["B008", "B019"]

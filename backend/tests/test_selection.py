@@ -6,7 +6,9 @@ import pytest
 from app.metrics import summary
 from app.selection import select_forecasts
 
-ts = lambda s: pd.Timestamp(s, tz="UTC")
+
+def ts(s: str) -> pd.Timestamp:
+    return pd.Timestamp(s, tz="UTC")
 
 
 @pytest.fixture
