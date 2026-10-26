@@ -5,7 +5,7 @@ import { Accuracy } from "./components/Accuracy";
 import { Async } from "./components/common";
 import { DecisionDay } from "./components/DecisionDay";
 import { HowItWorks } from "./components/HowItWorks";
-import { dateRange, dayLabel } from "./format";
+import { dateRange, dayLabel, ukDate } from "./format";
 
 type Tab = "decide" | "accuracy" | "how";
 const TABS: [Tab, string][] = [
@@ -23,14 +23,17 @@ function tabFromHash(): Tab {
 export function App() {
   const meta = useApi(api.meta, "meta");
   return (
-    <div className="wrap">
-      <header className="top">
+    <>
+      <header className="topbar">
         <h1>Windbook</h1>
-        <span className="tag">GB day-ahead · national wind · January 2026 decisions</span>
+        <span className="src">
+          Data: Elexon BMRS · FUELHH, WINDFOR{meta.data ? ` · snapshot ${ukDate(meta.data.snapshot_at)}` : ""}
+        </span>
       </header>
-      <Async q={meta} height={480}>{(m) => <Workspace meta={m} />}</Async>
-      <footer className="foot">Data: Elexon BMRS FUELHH (WIND) and WINDFOR.</footer>
-    </div>
+      <main className="wrap">
+        <Async q={meta} height={480}>{(m) => <Workspace meta={m} />}</Async>
+      </main>
+    </>
   );
 }
 
@@ -69,10 +72,10 @@ function Workspace({ meta }: { meta: Meta }) {
         ))}
       </nav>
 
-      <div className="controls">
+      <div className="toolbar">
         {tab !== "accuracy" && (
-          <label className="ctl">
-            <span>Delivery day</span>
+          <label className="field">
+            <span className="lbl">Delivery day</span>
             <select id="day" value={date} onChange={(e) => setDate(e.target.value)}>
               {days.map((d) => (
                 <option key={d} value={d}>{dayLabel(d)}</option>
@@ -80,37 +83,37 @@ function Workspace({ meta }: { meta: Meta }) {
             </select>
           </label>
         )}
-        <div className="ctl">
-          <span>Forecast chosen by</span>
+        <div className="field">
+          <span className="lbl">Forecast used</span>
           <div className="seg" role="group" aria-label="Forecast selection rule">
             <button className={kind === "cutoff" ? "on" : ""} onClick={() => setKind("cutoff")}>D‑1 cutoff</button>
             <button className={kind === "horizon" ? "on" : ""} onClick={() => setKind("horizon")}>Fixed horizon</button>
           </div>
         </div>
         {kind === "cutoff" ? (
-          <label className="ctl">
-            <span>Cutoff on D‑1 (UK): <b>{meta.cutoff_grid[cutoffIdx]}</b></span>
+          <label className="field">
+            <span className="lbl">Cutoff on D‑1 (UK): <b>{meta.cutoff_grid[cutoffIdx]}</b></span>
             <input id="cutoff" type="range" min={0} max={meta.cutoff_grid.length - 1} value={cutoffIdx}
               onChange={(e) => setCutoffIdx(Number(e.target.value))} />
           </label>
         ) : (
-          <label className="ctl">
-            <span>Hours ahead: <b>{horizon} h</b></span>
+          <label className="field">
+            <span className="lbl">Hours ahead: <b>{horizon} h</b></span>
             <input id="horizon" type="range" min={meta.horizon_grid[0]} max={meta.horizon_grid.at(-1)} value={horizon}
               onChange={(e) => setHorizon(Number(e.target.value))} />
           </label>
         )}
         {tab === "decide" && (
-          <label className="ctl">
-            <span>Demand, GW <em>(assumption)</em></span>
+          <label className="field">
+            <span className="lbl">Demand, GW <span className="hint">(assumed)</span></span>
             <input id="demand" type="number" min={10} max={60} step={1} value={demand}
               onChange={(e) => setDemand(Math.max(0, Number(e.target.value) || 0))} />
           </label>
         )}
         {tab !== "how" && (
-          <label className="ctl check">
+          <label className="field inline">
             <input id="corrected" type="checkbox" checked={corrected} onChange={(e) => setCorrected(e.target.checked)} />
-            <span>Bias-corrected ({meta.bias_window_days}-day trailing)</span>
+            <span className="lbl">Bias-corrected ({meta.bias_window_days}-day trailing)</span>
           </label>
         )}
       </div>

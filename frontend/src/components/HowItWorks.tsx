@@ -1,5 +1,5 @@
 import { api, useApi, type Meta, type Mode } from "../api";
-import { mw, ukDateTime } from "../format";
+import { mw, settlementPeriod, signedMw, ukDateTime } from "../format";
 import { Async, Panel } from "./common";
 
 interface Props {
@@ -9,12 +9,12 @@ interface Props {
 }
 
 const METRICS: [string, string][] = [
-  ["Error", "Forecast − actual, per hour. Positive means wind was over-forecast, so you are short and top up at short notice."],
-  ["MAE", "Mean absolute error: the typical size of a miss, in MW. Easy to read and robust."],
-  ["RMSE", "Root mean squared error: like MAE but big misses count more. RMSE well above MAE means occasional large misses."],
-  ["Bias", "Mean error. A large, steady bias is a systematic offset you can correct, not random weather error."],
-  ["P10–P90", "80% of hourly errors fall in this range. Used as the planning band on Decision day."],
-  ["Bias-corrected", "Forecast minus the mean error of the past 7 days, using only actuals already published at the decision time."],
+  ["Error", "Forecast − actual, in MW, per hour. Positive: wind over-forecast, so the position is short."],
+  ["MAE", "Mean absolute error, in MW. The typical size of a miss."],
+  ["RMSE", "Root mean squared error, in MW. Weights large misses more than MAE."],
+  ["Bias", "Mean error, in MW. A steady bias is a systematic offset and can be corrected."],
+  ["P10–P90", "80% of hourly errors fall in this range. The day chart band uses the past 7 days."],
+  ["Bias-corrected", "Forecast minus the mean error over the past 7 days, using only actuals published before the cutoff."],
 ];
 
 /** A few versions before the one used, and the ones published after it. */
@@ -33,12 +33,12 @@ export function HowItWorks({ meta, date, mode }: Props) {
   return (
     <div className="stack">
       <Panel
-        title="The one rule: no look-ahead"
+        title="Forecast selection: no look-ahead"
         sub={
           <>
-            For each hour of delivery day D we use the newest forecast published at or before the decision time (by
-            default {meta.default_cutoff} UK time on D‑1). Anything published later was not available when you bid, so it
-            never counts. Forecasts more than {meta.max_forecast_age_h} h old at decision time are not used either.
+            For each hour of delivery day D, the app uses the latest forecast published at or before the cutoff
+            ({meta.default_cutoff} UK time on D‑1 by default). Later forecasts are never used. Forecasts more than{" "}
+            {meta.max_forecast_age_h} h old at the cutoff are not used.
           </>
         }
       >
@@ -46,23 +46,37 @@ export function HowItWorks({ meta, date, mode }: Props) {
           {(vin) => (
             <>
               <p className="sub">
-                Real example: every forecast for {ukDateTime(target)}. Actual output was {vin.actual_mw != null ? mw(vin.actual_mw) : "n/a"}.
+                Example: all forecasts for {ukDateTime(target)} (SP{settlementPeriod(target)}). Actual: {vin.actual_mw != null ? mw(vin.actual_mw) : "n/a"}.
               </p>
-              <ol className="timeline">
-                {around(vin.vintages, used?.publish_time).map((x) => {
-                  const state =
-                    used && x.publish_time === used.publish_time ? "used" : used && x.publish_time > used.decision_time ? "late" : "old";
-                  return (
-                    <li key={x.publish_time} className={`tl-${state}`}>
-                      <b>{ukDateTime(x.publish_time)}</b>
-                      <span>
-                        {mw(x.forecast_mw)} · {x.horizon_h} h ahead ·{" "}
-                        {state === "used" ? "used for the bid" : state === "late" ? "published after the decision, ignored" : "superseded"}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ol>
+              <div className="table-wrap">
+                <table className="vt">
+                  <thead>
+                    <tr>
+                      <th>Published (UK)</th>
+                      <th className="r">Hours ahead</th>
+                      <th className="r">Forecast</th>
+                      <th className="r">Error</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {around(vin.vintages, used?.publish_time).map((x) => {
+                      const state =
+                        used && x.publish_time === used.publish_time ? "used" : used && x.publish_time > used.decision_time ? "late" : "old";
+                      const err = vin.actual_mw != null ? x.forecast_mw - vin.actual_mw : null;
+                      return (
+                        <tr key={x.publish_time} className={state}>
+                          <td>{ukDateTime(x.publish_time)}</td>
+                          <td className="r">{x.horizon_h} h</td>
+                          <td className="r">{mw(x.forecast_mw)}</td>
+                          <td className={`r ${err == null ? "" : err > 0 ? "short" : "long"}`}>{err != null ? signedMw(err) : "–"}</td>
+                          <td>{state === "used" ? "Used" : state === "late" ? "After cutoff, not used" : "Superseded"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
         </Async>
@@ -74,12 +88,12 @@ export function HowItWorks({ meta, date, mode }: Props) {
           <div className="box"><b>Python pipeline</b><span>fetch → UTC → Parquet; {meta.forecast_vintages} forecast versions</span></div>
           <div className="box"><b>Precompute</b><span>every cutoff and horizon → JSON</span></div>
           <div className="box"><b>FastAPI</b><span>/api/day, /api/metrics, /api/horizon-curve</span></div>
-          <div className="box"><b>React</b><span>these three tabs</span></div>
+          <div className="box"><b>React</b><span>Decision day, accuracy, this page</span></div>
         </div>
         <ul className="notes">
-          <li>Delivery days {meta.first_delivery_day} to {meta.last_delivery_day}: every purchase decision made in January 2026.</li>
-          <li>WINDFOR is hourly; it is scored against the FUELHH half-hour starting at the same time. The chart shows all half-hours.</li>
-          <li>Times are stored in UTC and converted to UK time for the cutoff and for display.</li>
+          <li>Delivery days {meta.first_delivery_day} to {meta.last_delivery_day}, covering every decision made in January 2026.</li>
+          <li>WINDFOR is hourly. Each hour is scored against the FUELHH settlement period starting at the same time. The day chart shows all 48 periods.</li>
+          <li>Times are stored in UTC and shown in UK time.</li>
         </ul>
       </Panel>
 

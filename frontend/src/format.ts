@@ -26,3 +26,14 @@ export function dateRange(first: string, last: string): string[] {
   }
   return out;
 }
+
+/** GB settlement period (1-based, half-hours from UK local midnight). */
+export function settlementPeriod(iso: string): number {
+  const t = new Date(iso);
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: UK, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(t);
+  const h = Number(parts.find((p) => p.type === "hour")?.value);
+  const m = Number(parts.find((p) => p.type === "minute")?.value);
+  return h * 2 + (m >= 30 ? 1 : 0) + 1;
+}
+export const ukDate = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: UK });

@@ -30,6 +30,7 @@ export interface Meta {
   max_forecast_age_h: number;
   bias_window_days: number;
   forecast_vintages: number;
+  snapshot_at: string;
 }
 
 export interface DayPoint {

@@ -157,4 +157,14 @@ def meta(actuals: pd.DataFrame, forecasts: pd.DataFrame) -> dict:
         "actual_rows": len(in_window(actuals)),
         "forecast_rows": len(in_window(forecasts)),
         "forecast_vintages": int(in_window(forecasts)["publish_time"].nunique()),
+        "snapshot_at": snapshot_time().strftime(ISO),
     }
+
+
+def snapshot_time() -> datetime:
+    """When the pipeline last wrote the Parquet snapshot."""
+    from datetime import timezone
+
+    from .config import FORECASTS_FILE
+
+    return datetime.fromtimestamp(FORECASTS_FILE.stat().st_mtime, tz=timezone.utc)

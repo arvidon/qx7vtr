@@ -1,8 +1,8 @@
 import { Area, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api, useApi, type Day, type Mode } from "../api";
-import { gw, gwh, mw, signedMw, ukDateTime, ukTime } from "../format";
-import { Async, axis, grid, Kpi, Panel, tooltip } from "./common";
+import { gw, gwh, mw, settlementPeriod, signedMw, ukDateTime, ukTime } from "../format";
+import { Async, axis, grid, legend, niceMw, Panel, StatStrip } from "./common";
 
 interface Props {
   date: string;
@@ -11,19 +11,52 @@ interface Props {
   corrected: boolean;
 }
 
+interface Row {
+  t: string;
+  sp: number;
+  actual: number;
+  forecast?: number;
+  corrected?: number;
+  band?: [number, number];
+}
+
 /** Merge hourly forecasts and half-hourly actuals onto one half-hourly time axis. */
-function chartRows(day: Day) {
+function chartRows(day: Day): Row[] {
   const byTime = new Map(day.points.map((p) => [p.start_time, p]));
   return day.actual_halfhourly.map((a) => {
     const p = byTime.get(a.start_time);
     return {
       t: ukTime(a.start_time),
+      sp: settlementPeriod(a.start_time),
       actual: a.actual_mw,
       forecast: p?.forecast_mw,
       corrected: p?.forecast_corrected_mw,
       band: p && p.band_low_mw != null && p.band_high_mw != null ? [p.band_low_mw, p.band_high_mw] : undefined,
     };
   });
+}
+
+function DayTooltip({ active, payload, corrected }: { active?: boolean; payload?: { payload: Row }[]; corrected: boolean }) {
+  if (!active || !payload?.length) return null;
+  const r = payload[0].payload;
+  const fc = corrected ? r.corrected : r.forecast;
+  const err = fc != null ? fc - r.actual : null;
+  return (
+    <div className="tip">
+      <div className="tip-head">SP{r.sp} · {r.t}</div>
+      <table>
+        <tbody>
+          <tr><td>Forecast{corrected ? " (corr.)" : ""}</td><td>{fc != null ? mw(fc) : "–"}</td></tr>
+          <tr><td>Actual</td><td>{mw(r.actual)}</td></tr>
+          <tr>
+            <td>Error</td>
+            <td className={err == null ? undefined : err > 0 ? "short" : "long"}>{err != null ? signedMw(err) : "–"}</td>
+          </tr>
+          {r.band && <tr><td>P10–P90 range</td><td>{gw(r.band[0])}–{gw(r.band[1])} GW</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export function DecisionDay({ date, mode, demandGw, corrected }: Props) {
@@ -38,58 +71,57 @@ export function DecisionDay({ date, mode, demandGw, corrected }: Props) {
 function DayView({ day, demandGw, corrected, mode }: { day: Day; demandGw: number; corrected: boolean; mode: Mode }) {
   const forecastMwh = corrected ? day.forecast_corrected_mwh : day.forecast_mwh;
   const demandMwh = demandGw * 1000 * day.points.length; // hourly points
-  const toBuy = demandMwh - forecastMwh;
-  // The band is a range for actual wind; if wind lands at its low end you need this much more.
-  const extraLow = day.band_low_mwh != null ? forecastMwh - day.band_low_mwh : null;
-  const extraHigh = day.band_high_mwh != null ? day.band_high_mwh - forecastMwh : null;
+  // If wind comes in at the low end of the band (P90 error), you need this much more.
+  const margin = day.band_low_mwh != null ? forecastMwh - day.band_low_mwh : null;
   const miss = forecastMwh - day.actual_mwh;
   const first = day.points[0];
   const s = corrected ? day.summary_corrected : day.summary;
+  const hours = day.points.map((p) => p.horizon_h);
 
   return (
     <div className="stack">
-      <div className="kpis">
-        <Kpi value={gwh(forecastMwh)} label={`Forecast wind energy${corrected ? " (bias-corrected)" : ""}`} />
-        <Kpi value={gwh(toBuy)} label={`To buy beyond wind, at the assumed ${demandGw} GW demand`} />
-        <Kpi
-          value={extraLow != null && extraHigh != null ? `+${gw(extraLow)} / −${gw(extraHigh)} GWh` : "n/a"}
-          label="Extra buy if wind lands at P10 / could buy less at P90"
-        />
-        <Kpi
-          value={gwh(day.actual_mwh)}
-          label={<>Actual wind · forecast was {miss > 0 ? "over" : "under"} by {gwh(Math.abs(miss))}</>}
-          extra={<span className={`pill ${miss > 0 ? "bad" : "good"}`}>{miss > 0 ? "short" : "long"}</span>}
-        />
-      </div>
+      <StatStrip
+        stats={[
+          { label: `Forecast wind${corrected ? " (bias-corrected)" : ""}`, value: gwh(forecastMwh), note: `${day.points.length} hours` },
+          { label: "To buy beyond wind", value: gwh(demandMwh - forecastMwh), note: `At ${demandGw} GW assumed demand` },
+          {
+            label: "Safety margin (P90)",
+            value: margin != null ? `+${gwh(margin)}` : "n/a",
+            note: "Extra to buy if wind is as low as in the worst 10% of the past 7 days",
+          },
+          {
+            label: "Actual wind",
+            value: gwh(day.actual_mwh),
+            note: <span className={miss > 0 ? "short" : "long"}>{miss > 0 ? "Short" : "Long"} {gwh(Math.abs(miss))}</span>,
+          },
+        ]}
+      />
 
       <Panel
-        title="Wind forecast available at decision time vs what actually happened"
+        title="Forecast at decision time vs actual"
         sub={
           mode.kind === "cutoff" ? (
             <>
-              Newest forecast published by {ukDateTime(first.decision_time)} (used: {ukDateTime(first.publish_time)}).
-              Hours ahead: {Math.min(...day.points.map((p) => p.horizon_h))}–{Math.max(...day.points.map((p) => p.horizon_h))}.
-              Day MAE {mw(s.mae_mw)}, bias {signedMw(s.bias_mw)}.
+              Forecast published {ukDateTime(first.publish_time)}, latest before the {ukDateTime(first.decision_time)} cutoff ·{" "}
+              {Math.min(...hours)}–{Math.max(...hours)} h ahead · day MAE {mw(s.mae_mw)}, bias {signedMw(s.bias_mw)}
             </>
           ) : (
-            <>
-              Newest forecast published at least {mode.horizon} h before each hour. Day MAE {mw(s.mae_mw)}, bias{" "}
-              {signedMw(s.bias_mw)}.
-            </>
+            <>Latest forecast published at least {mode.horizon} h before each hour · day MAE {mw(s.mae_mw)}, bias {signedMw(s.bias_mw)}</>
           )
         }
       >
         <div className="chart-box">
-          <ResponsiveContainer width="100%" height={320}>
-            <ComposedChart data={chartRows(day)} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <ResponsiveContainer width="100%" height={340}>
+            <ComposedChart data={chartRows(day)} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid {...grid} />
               <XAxis dataKey="t" {...axis} interval={5} />
-              <YAxis {...axis} tickFormatter={(v) => `${gw(v)} GW`} width={64} />
-              <Tooltip {...tooltip} formatter={(v) => (Array.isArray(v) ? `${mw(Number(v[0]))} – ${mw(Number(v[1]))}` : mw(Number(v)))} />
-              <Legend wrapperStyle={{ fontSize: 12 }} formatter={(v) => <span style={{ color: "var(--muted)" }}>{v}</span>} />
-              <Area dataKey="band" name="P10–P90 range (past 7 days of errors)" legendType="square" fill="var(--band)" stroke="none" connectNulls isAnimationActive={false} />
-              <Line dataKey="actual" name="Actual (FUELHH)" stroke="var(--actual)" strokeWidth={2} dot={false} isAnimationActive={false} />
-              <Line dataKey="forecast" name="Forecast used" stroke="var(--fc)" strokeWidth={2.4} dot={false} connectNulls isAnimationActive={false} />
+              <YAxis {...axis} domain={niceMw(1000)} tickCount={5} tickFormatter={(v) => `${v / 1000}`} width={40}
+                label={{ value: "GW", position: "top", offset: 6, fill: "var(--muted)", fontSize: 11 }} />
+              <Tooltip content={<DayTooltip corrected={corrected} />} cursor={{ stroke: "var(--muted)", strokeWidth: 1 }} />
+              <Legend {...legend} />
+              <Area dataKey="band" name="P10–P90 range (past 7 days)" legendType="square" fill="var(--band)" fillOpacity={1} stroke="none" connectNulls isAnimationActive={false} />
+              <Line dataKey="actual" name="Actual (FUELHH)" stroke="var(--actual)" strokeWidth={1.75} dot={false} isAnimationActive={false} />
+              <Line dataKey="forecast" name="Forecast (WINDFOR)" stroke="var(--fc)" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
               {corrected && (
                 <Line dataKey="corrected" name="Bias-corrected forecast" stroke="var(--fc)" strokeDasharray="5 4" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
               )}
