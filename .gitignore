@@ -4,3 +4,11 @@ __pycache__/
 node_modules/
 dist/
 .vercel
+
+# Local media and video scripts (not for the repo)
+*.mp4
+*.m4a
+*.mov
+*.wav
+docs/
+.DS_Store
